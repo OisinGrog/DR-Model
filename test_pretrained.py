@@ -3,7 +3,8 @@ import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 
-#fjfijf
+
+
 class pretrained_Resnet(nn.Module):
     def __init__(self):
         super().__init__()
@@ -13,19 +14,11 @@ class pretrained_Resnet(nn.Module):
 
     def forward(self, input):
         x = self.model(input)
-        # print(x.shape)
         x = F.relu(x)
-        # print(x.shape)
         x = self.fc(x)
-        # print(x.shape)
-        x = F.softmax(x)
-        # print(x.shape)
 
         return x
 
 # data_1 = torch.randn(16, 3, 224, 224)
 # model_1 = pretrained_Resnet()
 # output = model_1(data_1)
-
-
-
