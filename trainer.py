@@ -9,7 +9,7 @@ import time
 import sys
 import logging
 
-#djjdjdj
+
 def get_logger(name):
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
                         datefmt='%Y-%m-%d %H:%M', level=logging.WARNING)

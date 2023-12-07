@@ -5,6 +5,7 @@ import os
 from PIL import Image
 from pathlib import Path
 
+
 class OisinDataset(Dataset):
     def __init__(self, csv_directory: Path, transform=None):
         """

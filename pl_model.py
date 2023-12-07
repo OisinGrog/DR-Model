@@ -12,7 +12,7 @@ class DR_model(pl.LightningModule):
         self.learning_rate = float(learning_rate)
         self.model = pretrained_Resnet()
         self.cross_entropy = nn.CrossEntropyLoss()
-        self.accuracy = torchmetrics.Accuracy(task='binary', average='macro', num_classes=2)
+        self.accuracy = torchmetrics.Accuracy(task='binary')
 
     def forward(self, x):
         inputs = x['image']
@@ -21,9 +21,9 @@ class DR_model(pl.LightningModule):
 
     def _evaluate(self, data):
         label = data['DR_label']
-        print(f'Shape of label: {label.shape}')
+        # print(f'Shape of label: {label.shape}')
         class_output = self(data)
-        print(f'Class Output shape: {class_output.shape}')
+        # print(f'Class Output shape: {class_output.shape}')
         loss = self.cross_entropy(class_output, label)
         acc = self.accuracy(class_output.argmax(dim=1), label)
         return {'loss': loss, 'accuracy':acc}
