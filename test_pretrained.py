@@ -18,7 +18,7 @@ class pretrained_Resnet(nn.Module):
         # print(x.shape)
         x = self.fc(x)
         # print(x.shape)
-        x = F.softmax(x)
+        # x = F.softmax(x)
         # print(x.shape)
 
         return x
