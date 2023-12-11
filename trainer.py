@@ -52,14 +52,16 @@ def train():
     link = get_shareable_link(service, model_id)
 
     subject = "DR-Model Training Complete"
-    body = f"Training has completed.\nTotal Run Time: {int(hours)} hours, {int(minutes)} minutes, and {seconds:.2f} seconds \n" \
+    body = f"{args.mode.upper()}ing has completed.\nTotal Run Time: {int(hours)} hours, {int(minutes)} minutes, and {seconds:.2f} seconds @ Epoch : {epochs}, BS: {data_BS} and learning rate {learning_rate}\n" \
            f"Please Download model here {link}"
     recipient_email = "samueladebayo@ieee.org"
     recipient_email_2 = 'sadebayo01@qub.ac.uk'
     recipient_email_3 = 'ogrogan02@qub.ac.uk'
     sender_email = "soluadebayo@gmail.com"
     sender_password = "*********"
+
     # Uncomment this part of the email to receive email update when training is done
+
     # send_email(recipient_email, sender_email, subject, body, password=sender_password)
     # logger.info(f'Email sent to {recipient_email}')
     # send_email(recipient_email_2, sender_email, subject, body, password=sender_password)
