@@ -13,7 +13,7 @@ class OisinDataset(Dataset):
         :param transform: Transformations to be applied to the images.
         """
         self.data_path = Path(csv_directory)
-        self.image_parent = os.path.join(self.data_path.parent, 'images')
+        self.image_parent = os.path.join(self.data_path.parent, 'fundus_photos')
         self.transform = transform
 
         # Read the CSV file into a DataFrame
@@ -43,12 +43,7 @@ class OisinDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        # Replace 'diabetic_retinopathy' with the correct column name for DR label
         DR_label = row['diabetic_retinopathy']
 
         return {'image': image, 'DR_label': torch.tensor(DR_label, dtype=torch.long)}
 
-# Example usage
-# transform = transforms.Compose([...])  # Define your transformations here
-# dataset = OisinDataset(csv_directory='path/to/csv', transform=transform)
-# loader = DataLoader(dataset, batch_size=32, shuffle=True)

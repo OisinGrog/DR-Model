@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch.optim
-from test_pretrained import pretrained_Resnet
+from models import pretrained_Resnet
 import torch.nn as nn
 import torchmetrics
 

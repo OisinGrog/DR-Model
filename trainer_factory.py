@@ -1,13 +1,15 @@
 import os
 import pytorch_lightning as pl
 from pl_model import DR_model
-from test_data import OisinDataset
-# from test_factory import Tester
+from dataset import OisinDataset
 from torchvision import transforms
-from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.utils.data import DataLoader, Subset
+import numpy as np
+from collections import Counter
 import torch
 
-#shjshjs
+
+# shjshjs
 class TrainerFactory:
     def __init__(self, args, configfile, configfile_head, tb_logger, logger, model_name, model_folder, parent_dir):
         self.args = args
@@ -22,12 +24,15 @@ class TrainerFactory:
         self.epochs = int(self.configfile_head['epoch'])
         self.num_gpus = int(configfile_head['num_gpus'])
 
+    def get_label(self, dataset_item):
+        return dataset_item['DR_label'].item()
+
     def _fit(self, train_loader, valid_loader=None, ckpt_path=None):
         self._log_hyperparameters()
         model_out_path = os.path.join(self.model_folder, f'{self.model_name}.ckpt')
         learner = DR_model(self.configfile_head['lr'])
         trainer = pl.Trainer(
-            accelerator='cpu',
+            accelerator='gpu',
             devices=self.num_gpus,
             num_nodes=1,
             logger=self.tb_logger,
@@ -36,26 +41,32 @@ class TrainerFactory:
 
             max_epochs=int(self.configfile_head['epoch'])
         )
-
-        fit_args = [learner, train_loader, valid_loader] if self.configfile_head['use_valid'].lower() == 'yes' else [learner,
-                                                                                                       train_loader]
-        if ckpt_path:
-            trainer.fit(*fit_args, ckpt_path=ckpt_path)
+        if self.args.mode.lower() == 'test':
+            fit_args = [learner, valid_loader]
+            return trainer.test(*fit_args, ckpt_path=ckpt_path)
         else:
-            trainer.fit(*fit_args)
+            fit_args = [learner, train_loader, valid_loader] if self.configfile_head['use_valid'].lower() == 'yes' else [
+                learner,
+                train_loader]
+            if ckpt_path:
+                if self.args.mode.lower() == 'train':
+                    trainer.fit(*fit_args, ckpt_path=ckpt_path)
 
-        if trainer.interrupted:
-            self.logger.info('TERMINATED DUE TO INTERRUPTION')
+            else:
+                trainer.fit(*fit_args)
 
-        trainer.save_checkpoint(model_out_path)
-        self.configfile.set('outputs', 'resume_ckpt', str(model_out_path))
-        self.configfile.set(f'outputs', 'output_model', str(model_out_path))
+            if trainer.interrupted:
+                self.logger.info('TERMINATED DUE TO INTERRUPTION')
 
-        with open('config.ini', 'w') as f:
-            self.configfile.write(f)
+            trainer.save_checkpoint(model_out_path)
+            self.configfile.set('outputs', 'resume_ckpt', str(model_out_path))
+            self.configfile.set(f'outputs', 'output_model', str(model_out_path))
 
-        self.logger.info(f'Full Checkpoint have been saved into {model_out_path}')
-        self.logger.info(f'Training done!')
+            with open('config.ini', 'w') as f:
+                self.configfile.write(f)
+
+            self.logger.info(f'Full Checkpoint have been saved into {model_out_path}')
+            self.logger.info(f'Training done!')
 
     def _log_hyperparameters(self):
         training_hyper = {'Batch Size': self.configfile_head['batch_size'], 'Learning Rate': self.configfile_head['lr'],
@@ -69,36 +80,52 @@ class TrainerFactory:
             transforms.ToTensor()
         ])
 
-
         dr_dataset = OisinDataset(self.configfile_head['data_dir'], transform=transform)
         total_samples = len(dr_dataset)
-        split = int(0.8 * total_samples)
+        class_0_indices = dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 0].index
+        class_1_indices = dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 1].index
 
-        torch.manual_seed(42)  # Set a seed for reproducibility
-        torch.cuda.manual_seed(42)  # If using GPU
-        torch.cuda.manual_seed_all(42)  # If using multiple GPUs
-        indices = torch.randperm(total_samples)
+        # Determine the number of samples per class for the validation set
+        num_samples_per_class = min(len(class_0_indices), len(class_1_indices)) // 2  # Adjust as needed
 
-        # Split the indices into train and validation
-        train_indices = indices[:split]
-        val_indices = indices[split:]
+        # Randomly select equal number of samples from each class
+        np.random.seed(42)  # for reproducibility
+        val_indices_class_0 = np.random.choice(class_0_indices, num_samples_per_class, replace=False)
+        val_indices_class_1 = np.random.choice(class_1_indices, num_samples_per_class, replace=False)
 
-        # Create SubsetRandomSampler for train and validation
-        train_sampler = SubsetRandomSampler(train_indices)
-        val_sampler = SubsetRandomSampler(val_indices)
+        # Combine indices
+        val_indices = np.concatenate((val_indices_class_0, val_indices_class_1))
+        np.random.shuffle(val_indices)  # Shuffle the combined indices
+
+        # Remaining indices for training
+        train_indices = list(set(range(len(dr_dataset))) - set(val_indices))
+
+        # Create Subset for training and validation
+        train_dataset = Subset(dr_dataset, train_indices)
+        val_dataset = Subset(dr_dataset, val_indices)
+        val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
+
+        print("Class Distribution in the Validation Dataset:")
+        for class_label, count in val_class_counts.items():
+            print(f'Class {class_label}: {count}')
+
+        print("Class Distribution in the Validation Dataset:")
+        print(f'Length of Train Dataset: {len(train_dataset)}')
+        print(f'Length of Valid Dataset: {len(val_dataset)}')
 
         # Create DataLoader for train and validation using the samplers
         batch_size = int(self.configfile_head['batch_size'])  # Use the batch size from your config
-        train_loader = DataLoader(dr_dataset, batch_size=batch_size, sampler=train_sampler, num_workers=int(self.configfile_head['num_workers']))
-        val_loader = DataLoader(dr_dataset, batch_size=batch_size, sampler=val_sampler, num_workers=int(self.configfile_head['num_workers']))
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  num_workers=int(self.configfile_head['num_workers']))
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                                num_workers=int(self.configfile_head['num_workers']))
         if self.args.mode.lower() == 'train':
             ckpt_path = None
+        elif self.args.mode.lower() == 'test':
+            ckpt_path = self.configfile['outputs']['output_model']
         elif self.args.mode.lower() == 'resume':
             ckpt_path = self.configfile['outputs']['resume_ckpt']
 
-        # elif self.args.mode.lower() == 'test':
-        #     tester = Tester(self.args, self.configfile_head)
-        #     return tester.test(val_loader)
         else:
             raise Exception
 
