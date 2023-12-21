@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch.optim
-from models import pretrained_Resnet
+from test_pretrained import pretrained_Resnet
 import torch.nn as nn
 import torchmetrics
 
@@ -26,7 +26,7 @@ class DR_model(pl.LightningModule):
         # print(f'Class Output shape: {class_output.shape}')
         loss = self.cross_entropy(class_output, label)
         acc = self.accuracy(class_output.argmax(dim=1), label)
-        return {'loss': loss, 'accuracy':acc}
+        return {'loss': loss, 'accuracy': acc}
 
     def _step(self, batch, step_name):
         res = self._evaluate(batch)
@@ -45,4 +45,3 @@ class DR_model(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-

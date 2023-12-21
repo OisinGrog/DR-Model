@@ -8,6 +8,18 @@ import smtplib
 from email.mime.text import MIMEText
 from tqdm import tqdm
 import io
+import configparser
+from pytorch_lightning.callbacks import Callback
+import json
+import csv
+
+
+def modify_config(learning_rate):
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    config['hyperparameters']['lr'] = str(learning_rate)
+    with open('config.ini', 'w') as configfile:
+        config.write(configfile)
 
 
 def google_drive_service():
@@ -85,3 +97,36 @@ def send_email(recipient, smtp_user, subject, body, smtp_port=587, password='pas
 
     server.sendmail(smtp_user, recipient, msg.as_string())
     server.quit()
+
+
+class SaveMetricsCallback(Callback):
+    def __init__(self, filename, format='json'):
+        self.filename = filename
+        self.format = format
+        self.metrics = []
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        accuracy = trainer.callback_metrics.get('valid/accuracy').item()
+        epoch = trainer.current_epoch
+        if any(metric['epoch'] == epoch for metric in self.metrics):
+            for metric in self.metrics:
+                if metric['epoch'] == epoch:
+                    metric['validation_accuracy'] = accuracy
+                    break
+        else:
+            self.metrics.append({'epoch': epoch, 'validation_accuracy': accuracy})
+
+        # metric = {'epoch': epoch, 'validation_accuracy': accuracy}
+        # self.metrics.append(metric)
+
+        if self.format == 'json':
+            with open(self.filename, 'w') as f:
+                json.dump(self.metrics, f, indent=4)
+
+        elif self.format == 'csv':
+            with open(self.filename, 'a', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['epoch', 'validation_accuracy'])
+                if not os.path.exists(self.filename) or os.stat(self.filename).st_size == 0:
+                    writer.writeheader()
+                writer.writerow({'epoch': epoch, 'validation_accuracy': accuracy})
+
