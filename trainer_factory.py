@@ -1,15 +1,15 @@
 import os
 import pytorch_lightning as pl
 from pl_model import DR_model
-from dataset import OisinDataset
+from test_data import OisinDataset
 from torchvision import transforms
 from torch.utils.data import DataLoader, Subset
 import numpy as np
 from collections import Counter
 import torch
+from utils import SaveMetricsCallback
 
 
-# shjshjs
 class TrainerFactory:
     def __init__(self, args, configfile, configfile_head, tb_logger, logger, model_name, model_folder, parent_dir):
         self.args = args
@@ -31,21 +31,24 @@ class TrainerFactory:
         self._log_hyperparameters()
         model_out_path = os.path.join(self.model_folder, f'{self.model_name}.ckpt')
         learner = DR_model(self.configfile_head['lr'])
+        save_metrics_callback = SaveMetricsCallback(f"{self.configfile_head['lr']}_validation_metrics.json",
+                                                    format='json')
+
         trainer = pl.Trainer(
             accelerator='gpu',
             devices=self.num_gpus,
             num_nodes=1,
             logger=self.tb_logger,
             sync_batchnorm=True,
-            # deterministic=True,
-
-            max_epochs=int(self.configfile_head['epoch'])
+            max_epochs=int(self.configfile_head['epoch']),
+            callbacks=[save_metrics_callback]
         )
         if self.args.mode.lower() == 'test':
             fit_args = [learner, valid_loader]
             return trainer.test(*fit_args, ckpt_path=ckpt_path)
         else:
-            fit_args = [learner, train_loader, valid_loader] if self.configfile_head['use_valid'].lower() == 'yes' else [
+            fit_args = [learner, train_loader, valid_loader] if self.configfile_head[
+                                                                    'use_valid'].lower() == 'yes' else [
                 learner,
                 train_loader]
             if ckpt_path:
@@ -122,7 +125,7 @@ class TrainerFactory:
         if self.args.mode.lower() == 'train':
             ckpt_path = None
         elif self.args.mode.lower() == 'test':
-            ckpt_path = self.configfile['outputs']['output_model']
+            ckpt_path = os.path.join(self.model_folder, f'{self.model_name}.ckpt') # self.configfile['outputs']['output_model']
         elif self.args.mode.lower() == 'resume':
             ckpt_path = self.configfile['outputs']['resume_ckpt']
 

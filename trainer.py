@@ -1,3 +1,4 @@
+import datetime
 import os
 from pathlib import Path
 from trainer_factory import TrainerFactory
@@ -7,7 +8,7 @@ import configparser
 import argparse
 import time
 import logging
-from utils import send_email, google_drive_service, file_upload, get_shareable_link
+from utils import send_email, google_drive_service, file_upload, get_shareable_link, modify_config
 
 
 def get_logger(name):
@@ -23,7 +24,7 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', '-m', choices=['train', 'test', 'tune', 'resume'], default='train')
     args = parser.parse_args()
-    service = google_drive_service()
+    # service = google_drive_service()
     seed_everything(42, workers=True)
     tb_logger = TensorBoardLogger('training-logs', name='Diabetic-Retinopathy')
     configfile = configparser.ConfigParser()
@@ -40,28 +41,43 @@ def train():
     trainer_factory = TrainerFactory(args, configfile, configfile_head, tb_logger, logger, model_name, model_folder,
                                      parent_dir)
     start_time = time.time()
+    # body_1 = f'Training has started for DR Model @: \nlearning rate {learning_rate:.5f}\nBatch Size: {data_BS} \nEpoch: {epochs}'
+    # recipient_email = "samueladebayo@ieee.org"
+    # recipient_email_2 = 'sadebayo01@qub.ac.uk'
+    # current_time = datetime.datetime.now()
+    # subject_1 = f"Training Started @ {current_time.strftime('%Y-%m-%d %H:%M')} lr:{learning_rate}"
+    # # recipient_email_3 = 'ogrogan02@qub.ac.uk'
+    # sender_email = "soluadebayo@gmail.com"
+    # sender_password = "***********"
+    # send_email(recipient_email, sender_email, subject_1, body_1, password=sender_password)
+    # send_email(recipient_email_2, sender_email, subject_1, body_1, password=sender_password)
+    # send_email(recipient_email_3, sender_email, subject_1, body_1, password=sender_password)
+
     trainer_factory.get_train_trainer()
     end_time = time.time()
     total_time = end_time - start_time
     hours, minutes, seconds = total_time // 3600, (total_time % 3600) // 60, total_time % 60
     logger.info(f'Total Run time for Training is {int(hours)} hours, {int(minutes)}, and {seconds:.2f} seconds')
 
-    model_path = os.path.join(model_folder, f'{model_name}.ckpt')
-
-    model_id = file_upload(service, model_path, model_name)
-    link = get_shareable_link(service, model_id)
-
-    subject = "DR-Model Training Complete"
-    body = f"{args.mode.upper()}ing has completed.\nTotal Run Time: {int(hours)} hours, {int(minutes)} minutes, and {seconds:.2f} seconds @ Epoch : {epochs}, BS: {data_BS} and learning rate {learning_rate}\n" \
-           f"Please Download model here {link}"
-    recipient_email = "samueladebayo@ieee.org"
-    recipient_email_2 = 'sadebayo01@qub.ac.uk'
-    recipient_email_3 = 'ogrogan02@qub.ac.uk'
-    sender_email = "soluadebayo@gmail.com"
-    sender_password = "*********"
-
-    # Uncomment this part of the email to receive email update when training is done
-
+    # model_path = os.path.join(model_folder, f'{model_name}.ckpt')
+    # acc_file_path = f"{learning_rate:.5f}_validation_metrics.json"
+    # model_id = file_upload(service, model_path, model_name)
+    # acc_file_id = file_upload(service, acc_file_path, f'{learning_rate}_validation_metrics')
+    #
+    # link_model = get_shareable_link(service, model_id)
+    # link_acc_file = get_shareable_link(service, acc_file_id)
+    # current_time = datetime.datetime.now()
+    #
+    # subject = f"DR-Model Training Complete @ {current_time.strftime('%Y-%m-%d %H:%M')} for LR {learning_rate}"
+    # body = f"Training has completed.\nTotal Run Time: {int(hours)} hours, {int(minutes)} minutes, and {seconds:.2f} seconds \n" \
+    #        f"Please Download model here {link_model}\n" \
+    #        f"Validation Accuracy File here {link_acc_file}"
+    # recipient_email = "samueladebayo@ieee.org"
+    # recipient_email_2 = 'sadebayo01@qub.ac.uk'
+    # # recipient_email_3 = 'ogrogan02@qub.ac.uk'
+    # sender_email = "soluadebayo@gmail.com"
+    # sender_password = "*************"
+    #
     # send_email(recipient_email, sender_email, subject, body, password=sender_password)
     # logger.info(f'Email sent to {recipient_email}')
     # send_email(recipient_email_2, sender_email, subject, body, password=sender_password)
