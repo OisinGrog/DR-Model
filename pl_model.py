@@ -26,7 +26,7 @@ class DR_model(pl.LightningModule):
         # print(f'Class Output shape: {class_output.shape}')
         loss = self.cross_entropy(class_output, label)
         acc = self.accuracy(class_output.argmax(dim=1), label)
-        return {'loss': loss, 'accuracy': acc}
+        return {'loss': loss, 'acc': acc}
 
     def _step(self, batch, step_name):
         res = self._evaluate(batch)
@@ -44,4 +44,10 @@ class DR_model(pl.LightningModule):
         return self._step(batch, 'valid')
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max')
+        return {
+                'optimizer': optimizer,
+                'lr_scheduler': scheduler,
+                'monitor': 'valid/acc'
+            }
