@@ -8,7 +8,7 @@ import numpy as np
 from collections import Counter
 import torch
 from utils import SaveMetricsCallback
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 
 class TrainerFactory:
@@ -38,10 +38,17 @@ class TrainerFactory:
         """https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html"""
         training_callback = ModelCheckpoint(
             dirpath='callback-Model-outputs',
-            min_delta = '',
-            patience = 10,
             verbose=True,
-            mode = 'max'
+            monitor='valid/acc',
+            mode='max'
+        )
+
+        early_stopping_callback = EarlyStopping(
+            monitor="valid/acc",
+            min_delta=0.01,
+            verbose=True,
+            patience=30,
+            mode="max"
         )
 
         # ModelCheckpoint(
@@ -52,7 +59,6 @@ class TrainerFactory:
         #     mode='max'
         # )
 
-
         trainer = pl.Trainer(
             accelerator='gpu',
             devices=self.num_gpus,
@@ -60,7 +66,7 @@ class TrainerFactory:
             logger=self.tb_logger,
             sync_batchnorm=True,
             max_epochs=int(self.configfile_head['epoch']),
-            callbacks=[save_metrics_callback, training_callback]
+            callbacks=[save_metrics_callback, training_callback, early_stopping_callback]
         )
         if self.args.mode.lower() == 'test':
             fit_args = [learner, valid_loader]
