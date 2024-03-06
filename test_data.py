@@ -13,7 +13,7 @@ class OisinDataset(Dataset):
         :param transform: Transformations to be applied to the images.
         """
         self.data_path = Path(csv_directory)
-        self.image_parent = os.path.join(self.data_path.parent, 'images')
+        self.image_parent = os.path.join(self.data_path.parent, 'fundus_photos')
         self.transform = transform
 
         # Read the CSV file into a DataFrame

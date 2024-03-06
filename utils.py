@@ -106,7 +106,7 @@ class SaveMetricsCallback(Callback):
         self.metrics = []
 
     def on_validation_epoch_end(self, trainer, pl_module):
-        accuracy = trainer.callback_metrics.get('valid/accuracy').item()
+        accuracy = trainer.callback_metrics.get('valid/acc').item()
         epoch = trainer.current_epoch
         if any(metric['epoch'] == epoch for metric in self.metrics):
             for metric in self.metrics:
