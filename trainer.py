@@ -37,7 +37,7 @@ def train():
 
     model_folder = os.path.join(parent_dir, 'OUTPUT')
     os.makedirs(model_folder, exist_ok=True) if not os.path.exists(model_folder) else None
-    model_name = f'DR-epochs={epochs}-lr={learning_rate}-BS={data_BS}'
+    model_name = f'DR-Resnet50-epochs={epochs}-lr={learning_rate}-BS={data_BS}'
     trainer_factory = TrainerFactory(args, configfile, configfile_head, tb_logger, logger, model_name, model_folder,
                                      parent_dir)
     start_time = time.time()

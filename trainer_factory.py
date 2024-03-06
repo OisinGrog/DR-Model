@@ -32,7 +32,7 @@ class TrainerFactory:
         self._log_hyperparameters()
         model_out_path = os.path.join(self.model_folder, f'{self.model_name}.ckpt')
         learner = DR_model(self.configfile_head['lr'])
-        save_metrics_callback = SaveMetricsCallback(f"{self.configfile_head['lr']}_validation_metrics.json",
+        save_metrics_callback = SaveMetricsCallback(f"Resnet50_{self.configfile_head['lr']}_validation_metrics.json",
                                                     format='json')
         # Sample callback for Early Stopping
         """https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html"""
