@@ -6,7 +6,6 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, Subset
 import numpy as np
 from collections import Counter
-import torch
 from utils import SaveMetricsCallback
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
@@ -112,48 +111,66 @@ class TrainerFactory:
         batch_size = int(self.configfile_head['batch_size'])  # Use the batch size from your config
 
         dr_dataset = OisinDataset(self.configfile_head['data_dir'], transform=transform)
-        total_samples = len(dr_dataset)
-        class_0_indices = dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 0].index
-        class_1_indices = dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 1].index
+        class_0_indices = list(dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 0].index)
+        class_1_indices = list(dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 1].index)
 
-        # Determine the number of samples per class for the test set
-        num_samples_per_class = min(len(class_0_indices), len(class_1_indices)) // 2  # Adjust as needed
-        print(num_samples_per_class)
+        # Test set requires 10% of both classes
+        # Validation set requires 20% of both classes
+        # Training set gets the rest
 
-        # Randomly select equal number of samples from each class
+        # Pre-shuffle the lists to make random, non-repetitive selection possible
         np.random.seed(42)  # for reproducibility
-        test_indices_class_0 = np.random.choice(class_0_indices, num_samples_per_class, replace=False)
-        test_indices_class_1 = np.random.choice(class_1_indices, num_samples_per_class, replace=False)
+        np.random.shuffle(class_0_indices)
+        np.random.shuffle(class_1_indices)
 
-        print(len(test_indices_class_0))
-        print(len(test_indices_class_1))
+        # Determine the number of samples per class for the test and validation set
+        # 10% for test and validation
+        test_num_samples_per_class = min(len(class_0_indices), len(class_1_indices)) // 10
+        val_num_samples_per_class = test_num_samples_per_class*2
+
+        # Test set
+        test_indices_class_0 = class_0_indices[:test_num_samples_per_class]
+        test_indices_class_1 = class_1_indices[:test_num_samples_per_class]
+
+        # Val set
+        val_indices_class_0 = class_0_indices[test_num_samples_per_class:2*val_num_samples_per_class]
+        val_indices_class_1 = class_0_indices[test_num_samples_per_class:2*val_num_samples_per_class]
+
+        # Train set
+        train_indices_class_0 = class_0_indices[2*val_num_samples_per_class:]
+        train_indices_class_1 = class_1_indices[2*val_num_samples_per_class:]
+
+        # # Checking for uniqueness
+        # for test_num in test_indices_class_0:
+        #     for val_num in val_indices_class_0:
+        #         if test_num == val_num:
+        #             print(f'Lists are not unique {test_num}')
+        #     for train_num in train_indices_class_0:
+        #         if test_num == train_num:
+        #             print(f'Lists are not unique {test_num}')
+        #
+        # for test_num in test_indices_class_1:
+        #     for val_num in val_indices_class_1:
+        #         if test_num == val_num:
+        #             print(f'Lists are not unique {test_num}')
+        #     for train_num in train_indices_class_1:
+        #         if test_num == train_num:
+        #             print(f'Lists are not unique {test_num}')
 
         # Combine indices
         test_indices = np.concatenate((test_indices_class_0, test_indices_class_1))
-        np.random.shuffle(test_indices)  # Shuffle the combined indices
+        val_indices = np.concatenate((val_indices_class_0, val_indices_class_1))
+        train_indices = np.concatenate((train_indices_class_0, train_indices_class_1))
 
-        # Remaining indices for training and validation
-        train_val_indices = list(set(range(len(dr_dataset))) - set(test_indices))
+        print(f'Test set {len(test_indices)}')
+        print(f'Val set {len(val_indices)}')
+        print(f'Train set {len(train_indices)}')
 
-        train_length = round(len(train_val_indices) * 0.8)
-        valid_indices_new = train_val_indices[train_length:]
-        np.random.shuffle(valid_indices_new)
-        print(f'New valid length: {len(valid_indices_new)}')
-        train_indices = train_val_indices[:train_length]
-
-        print(f'val_indices {len(valid_indices_new)}')
         if self.args.mode.lower() == 'train':
             ckpt_path = None
             train_dataset = Subset(dr_dataset, train_indices)
-            val_dataset = Subset(dr_dataset, valid_indices_new)
-            # print("Class Distribution in the Validation Dataset:")
-            # val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
-            # for class_label, count in val_class_counts.items():
-            #     print(f'Class {class_label}: {count}')
-            # # print("Class Distribution in the Validation Dataset:")
-            # print(f'Length of Train Dataset: {len(train_dataset)}')
-            # print(f'Length of Valid Dataset: {len(val_dataset)}')
-            # val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
+            val_dataset = Subset(dr_dataset, val_indices)
+
             train_loader = DataLoader(train_dataset, batch_size=batch_size,
                                   num_workers=int(self.configfile_head['num_workers']))
             val_loader = DataLoader(val_dataset, batch_size=batch_size,
@@ -162,13 +179,7 @@ class TrainerFactory:
             return self._fit(train_loader, valid_loader=val_loader, ckpt_path=ckpt_path)
 
         elif self.args.mode.lower() == 'test':
-            print('Going into test mode')
             test_dataset = Subset(dr_dataset, test_indices)
-            # test_class_counts = Counter(self.get_label(test_dataset[i]) for i in range(len(test_dataset)))
-            print(f'Length of Test Dataset: {len(test_dataset)}')
-            # print("Class Distribution in the Test Dataset:")
-            # for class_label, count in test_class_counts.items():
-            #     print(f'Class {class_label}: {count}')
             print('Testing')
             ckpt_path = self.configfile['outputs']['output_model']
             test_loader = DataLoader(test_dataset, batch_size=batch_size,
@@ -178,7 +189,7 @@ class TrainerFactory:
         elif self.args.mode.lower() == 'resume':
             ckpt_path = self.configfile['outputs']['resume_ckpt']
             train_dataset = Subset(dr_dataset, train_indices)
-            val_dataset = Subset(dr_dataset, valid_indices_new)
+            val_dataset = Subset(dr_dataset, val_indices)
             val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
 
         else:
