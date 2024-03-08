@@ -140,27 +140,25 @@ class TrainerFactory:
         train_indices_class_0 = class_0_indices[2*val_num_samples_per_class:]
         train_indices_class_1 = class_1_indices[2*val_num_samples_per_class:]
 
-        # # Checking for uniqueness
-        # for test_num in test_indices_class_0:
-        #     for val_num in val_indices_class_0:
-        #         if test_num == val_num:
-        #             print(f'Lists are not unique {test_num}')
-        #     for train_num in train_indices_class_0:
-        #         if test_num == train_num:
-        #             print(f'Lists are not unique {test_num}')
-        #
-        # for test_num in test_indices_class_1:
-        #     for val_num in val_indices_class_1:
-        #         if test_num == val_num:
-        #             print(f'Lists are not unique {test_num}')
-        #     for train_num in train_indices_class_1:
-        #         if test_num == train_num:
-        #             print(f'Lists are not unique {test_num}')
+        print(f'Training DR images {len(train_indices_class_1)}')
+        print(f'Training non-DR images {len(train_indices_class_0)}')
 
         # Combine indices
         test_indices = np.concatenate((test_indices_class_0, test_indices_class_1))
         val_indices = np.concatenate((val_indices_class_0, val_indices_class_1))
         train_indices = np.concatenate((train_indices_class_0, train_indices_class_1))
+
+        # Checking that lists are unique
+        for train_num, val_num in zip(train_indices, val_indices):
+            for test_num in test_indices:
+                if train_num == val_num or train_num == test_num or val_num == test_num:
+                    print(f'Lists are not unique')
+                    print(f'Train {train_num}, val {val_num}, test {test_num}')
+                    exit()
+
+        np.random.shuffle(test_indices)
+        np.random.shuffle(val_indices)
+        np.random.shuffle(train_indices)
 
         print(f'Test set {len(test_indices)}')
         print(f'Val set {len(val_indices)}')
@@ -194,4 +192,3 @@ class TrainerFactory:
 
         else:
             raise Exception
-
