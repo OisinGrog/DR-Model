@@ -1,9 +1,13 @@
-import pandas as pd
-import torch
 from torch.utils.data import Dataset, DataLoader
+import numpy as np
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Subset
+import pandas as pd
 import os
-from PIL import Image
 from pathlib import Path
+from PIL import Image
+import torch
+from torchvision import transforms
 
 
 class OisinDataset(Dataset):
@@ -47,20 +51,8 @@ class OisinDataset(Dataset):
 
         return {'image': image, 'DR_label': torch.tensor(DR_label, dtype=torch.long)}
 
+
 if __name__ == '__main__':
-    import numpy as np
-    from sklearn.model_selection import train_test_split
-    from torch.utils.data import Subset
-    import pandas as pd
-    import os
-    from pathlib import Path
-    from PIL import Image
-    import torch
-    from torchvision import transforms
-
-    # Assuming OisinDataset is defined as provided
-    # Here's how you can use the OisinDataset class with a stratified split approach
-
     data_dir = '/home/qub-hri/Documents/Datasets/a-brazilian-multilabel-ophthalmological-dataset-brset-1.0.0/labels.csv'
     transform = transforms.Compose([transforms.ToTensor(),  # Add more transformations as needed
                                     ])
@@ -79,7 +71,6 @@ if __name__ == '__main__':
                                                                   random_state=42)  # Adjusting for the 20% split after removing 10% for test
 
     # Assuming indices_train, indices_val, indices_test are the indices for your train, validation, and test sets
-    # And assuming y is the array of labels corresponding to the entire dataset
 
     # Convert indices lists to arrays for easier manipulation
     indices_train_arr = np.array(indices_train)
@@ -105,13 +96,9 @@ if __name__ == '__main__':
     val_dataset = Subset(dr_dataset, indices_val)
     test_dataset = Subset(dr_dataset, indices_test)
 
-    # From here, you can use these Subset instances with a DataLoader for training, validation, and testing
-    # Example: train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-
     print(f"Training set size: {len(train_dataset)}")
     print(f"Validation set size: {len(val_dataset)}")
     print(f"Test set size: {len(test_dataset)}")
-
 
     total_instances = 15220 + 1046
     class_0_weight = 1 / (15220 * total_instances)
@@ -124,7 +111,3 @@ if __name__ == '__main__':
 
     class_weights = torch.tensor([class_0_weight, class_1_weight], dtype=torch.float32)
     print(f'Class Weight: {class_weights}')
-
-
-
-

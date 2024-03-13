@@ -23,7 +23,7 @@ class DR_model(pl.LightningModule):
         self.save_hyperparameters()
         self.learning_rate = float(learning_rate)
         self.model = pretrained_Resnet()
-        self.cross_entropy = nn.CrossEntropyLoss(weight=class_weights)
+        self.cross_entropy = nn.CrossEntropyLoss(weight=class_weights) # I have added the class weights here
         self.accuracy = torchmetrics.Accuracy(task='binary')
 
     def forward(self, x):
