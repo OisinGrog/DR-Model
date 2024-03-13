@@ -141,8 +141,6 @@ class TrainerFactory:
                                   num_workers=int(self.configfile_head['num_workers']))
         val_loader = DataLoader(val_dataset, batch_size=batch_size,
                                 num_workers=int(self.configfile_head['num_workers']))
-
-        test_loader = ''
         if self.args.mode.lower() == 'train':
             ckpt_path = None
         elif self.args.mode.lower() == 'test':
