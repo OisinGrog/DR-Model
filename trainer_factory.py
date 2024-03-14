@@ -6,8 +6,9 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, Subset
 import numpy as np
 from collections import Counter
+import torch
 from utils import SaveMetricsCallback
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 
 class TrainerFactory:
@@ -27,27 +28,20 @@ class TrainerFactory:
     def get_label(self, dataset_item):
         return dataset_item['DR_label'].item()
 
-    def _fit(self, train_loader, valid_loader=None, test_loader=None, ckpt_path=None):
+    def _fit(self, train_loader, valid_loader=None, ckpt_path=None):
         self._log_hyperparameters()
         model_out_path = os.path.join(self.model_folder, f'{self.model_name}.ckpt')
         learner = DR_model(self.configfile_head['lr'])
-        save_metrics_callback = SaveMetricsCallback(f"Resnet50_{self.configfile_head['lr']}_validation_metrics.json",
+        save_metrics_callback = SaveMetricsCallback(f"{self.configfile_head['lr']}_validation_metrics.json",
                                                     format='json')
         # Sample callback for Early Stopping
         """https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html"""
         training_callback = ModelCheckpoint(
             dirpath='callback-Model-outputs',
+            min_delta = '',
+            patience = 10,
             verbose=True,
-            monitor='valid/acc',
-            mode='max'
-        )
-
-        early_stopping_callback = EarlyStopping(
-            monitor="valid/acc",
-            min_delta=0.01,
-            verbose=True,
-            patience=30,
-            mode="max"
+            mode = 'max'
         )
 
         # ModelCheckpoint(
@@ -58,6 +52,7 @@ class TrainerFactory:
         #     mode='max'
         # )
 
+
         trainer = pl.Trainer(
             accelerator='gpu',
             devices=self.num_gpus,
@@ -65,10 +60,10 @@ class TrainerFactory:
             logger=self.tb_logger,
             sync_batchnorm=True,
             max_epochs=int(self.configfile_head['epoch']),
-            callbacks=[save_metrics_callback, training_callback, early_stopping_callback]
+            callbacks=[save_metrics_callback, training_callback]
         )
         if self.args.mode.lower() == 'test':
-            fit_args = [learner, test_loader]
+            fit_args = [learner, valid_loader]
             return trainer.test(*fit_args, ckpt_path=ckpt_path)
         else:
             fit_args = [learner, train_loader, valid_loader] if self.configfile_head[
@@ -78,14 +73,12 @@ class TrainerFactory:
             if ckpt_path:
                 if self.args.mode.lower() == 'train':
                     trainer.fit(*fit_args, ckpt_path=ckpt_path)
-                    if trainer.interrupted:
-                        self.logger.info('TERMINATED DUE TO INTERRUPTION')
-                        trainer.save_checkpoint(model_out_path)
-                        self.configfile.set('outputs', 'resume_ckpt', str(model_out_path))
-                        self.configfile.set(f'outputs', 'output_model', str(model_out_path))
 
             else:
                 trainer.fit(*fit_args)
+
+            if trainer.interrupted:
+                self.logger.info('TERMINATED DUE TO INTERRUPTION')
 
             trainer.save_checkpoint(model_out_path)
             self.configfile.set('outputs', 'resume_ckpt', str(model_out_path))
@@ -108,87 +101,57 @@ class TrainerFactory:
             transforms.Resize((224, 224)),
             transforms.ToTensor()
         ])
-        batch_size = int(self.configfile_head['batch_size'])  # Use the batch size from your config
 
         dr_dataset = OisinDataset(self.configfile_head['data_dir'], transform=transform)
-        class_0_indices = list(dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 0].index)
-        class_1_indices = list(dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 1].index)
+        total_samples = len(dr_dataset)
+        class_0_indices = dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 0].index
+        class_1_indices = dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 1].index
 
-        # Test set requires 10% of both classes
-        # Validation set requires 20% of both classes
-        # Training set gets the rest
+        # Determine the number of samples per class for the validation set
+        num_samples_per_class = min(len(class_0_indices), len(class_1_indices)) // 2  # Adjust as needed
 
-        # Pre-shuffle the lists to make random, non-repetitive selection possible
+        # Randomly select equal number of samples from each class
         np.random.seed(42)  # for reproducibility
-        np.random.shuffle(class_0_indices)
-        np.random.shuffle(class_1_indices)
-
-        # Determine the number of samples per class for the test and validation set
-        # 10% for test and validation
-        test_num_samples_per_class = min(len(class_0_indices), len(class_1_indices)) // 10
-        val_num_samples_per_class = test_num_samples_per_class*2
-
-        # Test set
-        test_indices_class_0 = class_0_indices[:test_num_samples_per_class]
-        test_indices_class_1 = class_1_indices[:test_num_samples_per_class]
-
-        # Val set
-        val_indices_class_0 = class_0_indices[test_num_samples_per_class:2*val_num_samples_per_class]
-        val_indices_class_1 = class_0_indices[test_num_samples_per_class:2*val_num_samples_per_class]
-
-        # Train set
-        train_indices_class_0 = class_0_indices[2*val_num_samples_per_class:]
-        train_indices_class_1 = class_1_indices[2*val_num_samples_per_class:]
-
-        print(f'Training DR images {len(train_indices_class_1)}')
-        print(f'Training non-DR images {len(train_indices_class_0)}')
+        val_indices_class_0 = np.random.choice(class_0_indices, num_samples_per_class, replace=False)
+        val_indices_class_1 = np.random.choice(class_1_indices, num_samples_per_class, replace=False)
 
         # Combine indices
-        test_indices = np.concatenate((test_indices_class_0, test_indices_class_1))
         val_indices = np.concatenate((val_indices_class_0, val_indices_class_1))
-        train_indices = np.concatenate((train_indices_class_0, train_indices_class_1))
+        np.random.shuffle(val_indices)  # Shuffle the combined indices
 
-        # Checking that lists are unique
-        for train_num, val_num in zip(train_indices, val_indices):
-            for test_num in test_indices:
-                if train_num == val_num or train_num == test_num or val_num == test_num:
-                    print(f'Lists are not unique')
-                    print(f'Train {train_num}, val {val_num}, test {test_num}')
-                    exit()
+        # Remaining indices for training
+        train_indices = list(set(range(len(dr_dataset))) - set(val_indices))
 
-        np.random.shuffle(test_indices)
-        np.random.shuffle(val_indices)
-        np.random.shuffle(train_indices)
+        # Create Subset for training and validation
+        train_dataset = Subset(dr_dataset, train_indices)
+        val_dataset = Subset(dr_dataset, val_indices)
+        val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
 
-        print(f'Test set {len(test_indices)}')
-        print(f'Val set {len(val_indices)}')
-        print(f'Train set {len(train_indices)}')
+        print("Class Distribution in the Validation Dataset:")
+        for class_label, count in val_class_counts.items():
+            print(f'Class {class_label}: {count}')
 
+        print("Class Distribution in the Validation Dataset:")
+        print(f'Length of Train Dataset: {len(train_dataset)}')
+        print(f'Length of Valid Dataset: {len(val_dataset)}')
+
+        # Create DataLoader for train and validation using the samplers
+        batch_size = int(self.configfile_head['batch_size'])  # Use the batch size from your config
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  num_workers=int(self.configfile_head['num_workers']))
+        val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                                num_workers=int(self.configfile_head['num_workers']))
         if self.args.mode.lower() == 'train':
             ckpt_path = None
-            train_dataset = Subset(dr_dataset, train_indices)
-            val_dataset = Subset(dr_dataset, val_indices)
-
-            train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                                  num_workers=int(self.configfile_head['num_workers']))
-            val_loader = DataLoader(val_dataset, batch_size=batch_size,
-                                num_workers=int(self.configfile_head['num_workers']))
-
-            return self._fit(train_loader, valid_loader=val_loader, ckpt_path=ckpt_path)
-
         elif self.args.mode.lower() == 'test':
-            test_dataset = Subset(dr_dataset, test_indices)
-            print('Testing')
-            ckpt_path = self.configfile['outputs']['output_model']
-            test_loader = DataLoader(test_dataset, batch_size=batch_size,
-                        num_workers=int(self.configfile_head['num_workers']))
-            return self._fit(train_loader=None, test_loader=test_loader, ckpt_path=ckpt_path)
-
+            ckpt_path = os.path.join(self.model_folder, f'{self.model_name}.ckpt') # self.configfile['outputs']['output_model']
         elif self.args.mode.lower() == 'resume':
             ckpt_path = self.configfile['outputs']['resume_ckpt']
-            train_dataset = Subset(dr_dataset, train_indices)
-            val_dataset = Subset(dr_dataset, val_indices)
-            val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
 
         else:
             raise Exception
+
+        if val_loader is not None:
+            return self._fit(train_loader, val_loader, ckpt_path=ckpt_path)
+        else:
+            return self._fit(train_loader, ckpt_path=ckpt_path)
