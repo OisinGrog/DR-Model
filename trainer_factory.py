@@ -8,7 +8,7 @@ import numpy as np
 from collections import Counter
 from utils import SaveMetricsCallback
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-
+from sklearn.model_selection import train_test_split
 
 class TrainerFactory:
     def __init__(self, args, configfile, configfile_head, tb_logger, logger, model_name, model_folder, parent_dir):
@@ -111,63 +111,48 @@ class TrainerFactory:
         batch_size = int(self.configfile_head['batch_size'])  # Use the batch size from your config
 
         dr_dataset = OisinDataset(self.configfile_head['data_dir'], transform=transform)
-        class_0_indices = list(dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 0].index)
-        class_1_indices = list(dr_dataset.df[dr_dataset.df['diabetic_retinopathy'] == 1].index)
 
-        # Test set requires 10% of both classes
-        # Validation set requires 20% of both classes
-        # Training set gets the rest
+        # Stratified split
+        y = dr_dataset.df['diabetic_retinopathy'].values
+        indices = range(len(dr_dataset))
 
-        # Pre-shuffle the lists to make random, non-repetitive selection possible
-        np.random.seed(42)  # for reproducibility
-        np.random.shuffle(class_0_indices)
-        np.random.shuffle(class_1_indices)
+        # Split dataset indices into train, validation, and test sets
+        indices_train, indices_test, y_train, y_test = train_test_split(indices, y, test_size=0.1, stratify=y,
+                                                                        random_state=42)
+        indices_train, indices_val, y_train, y_val = train_test_split(indices_train, y_train, test_size=(2 / 9),
+                                                                      stratify=y_train,
+                                                                      random_state=42)  # Adjusting for the 20% split after removing 10% for test
 
-        # Determine the number of samples per class for the test and validation set
-        # 10% for test and validation
-        test_num_samples_per_class = min(len(class_0_indices), len(class_1_indices)) // 10
-        val_num_samples_per_class = test_num_samples_per_class*2
+        # Convert indices lists to arrays for easier manipulation
+        indices_train_arr = np.array(indices_train)
+        indices_val_arr = np.array(indices_val)
+        indices_test_arr = np.array(indices_test)
 
-        # Test set
-        test_indices_class_0 = class_0_indices[:test_num_samples_per_class]
-        test_indices_class_1 = class_1_indices[:test_num_samples_per_class]
+        # Use the indices arrays to gather labels for each subset
+        labels_train = y[indices_train_arr]
+        labels_val = y[indices_val_arr]
+        labels_test = y[indices_test_arr]
 
-        # Val set
-        val_indices_class_0 = class_0_indices[test_num_samples_per_class:2*val_num_samples_per_class]
-        val_indices_class_1 = class_0_indices[test_num_samples_per_class:2*val_num_samples_per_class]
+        # Count occurrences of each class in the subsets
+        train_counts = np.bincount(labels_train)
+        val_counts = np.bincount(labels_val)
+        test_counts = np.bincount(labels_test)
 
-        # Train set
-        train_indices_class_0 = class_0_indices[2*val_num_samples_per_class:]
-        train_indices_class_1 = class_1_indices[2*val_num_samples_per_class:]
+        print(f"Training set: Class 0: {train_counts[0]}, Class 1: {train_counts[1]}")
+        print(f"Validation set: Class 0: {val_counts[0]}, Class 1: {val_counts[1]}")
+        print(f"Test set: Class 0: {test_counts[0]}, Class 1: {test_counts[1]}")
 
-        print(f'Training DR images {len(train_indices_class_1)}')
-        print(f'Training non-DR images {len(train_indices_class_0)}')
+        # Creating Subset objects for train, validation, and test
+        train_dataset = Subset(dr_dataset, indices_train)
+        val_dataset = Subset(dr_dataset, indices_val)
+        test_dataset = Subset(dr_dataset, indices_test)
 
-        # Combine indices
-        test_indices = np.concatenate((test_indices_class_0, test_indices_class_1))
-        val_indices = np.concatenate((val_indices_class_0, val_indices_class_1))
-        train_indices = np.concatenate((train_indices_class_0, train_indices_class_1))
-
-        # Checking that lists are unique
-        for train_num, val_num in zip(train_indices, val_indices):
-            for test_num in test_indices:
-                if train_num == val_num or train_num == test_num or val_num == test_num:
-                    print(f'Lists are not unique')
-                    print(f'Train {train_num}, val {val_num}, test {test_num}')
-                    exit()
-
-        np.random.shuffle(test_indices)
-        np.random.shuffle(val_indices)
-        np.random.shuffle(train_indices)
-
-        print(f'Test set {len(test_indices)}')
-        print(f'Val set {len(val_indices)}')
-        print(f'Train set {len(train_indices)}')
+        print(f"Training set size: {len(train_dataset)}")
+        print(f"Validation set size: {len(val_dataset)}")
+        print(f"Test set size: {len(test_dataset)}")
 
         if self.args.mode.lower() == 'train':
             ckpt_path = None
-            train_dataset = Subset(dr_dataset, train_indices)
-            val_dataset = Subset(dr_dataset, val_indices)
 
             train_loader = DataLoader(train_dataset, batch_size=batch_size,
                                   num_workers=int(self.configfile_head['num_workers']))
@@ -177,7 +162,6 @@ class TrainerFactory:
             return self._fit(train_loader, valid_loader=val_loader, ckpt_path=ckpt_path)
 
         elif self.args.mode.lower() == 'test':
-            test_dataset = Subset(dr_dataset, test_indices)
             print('Testing')
             ckpt_path = self.configfile['outputs']['output_model']
             test_loader = DataLoader(test_dataset, batch_size=batch_size,
@@ -186,9 +170,11 @@ class TrainerFactory:
 
         elif self.args.mode.lower() == 'resume':
             ckpt_path = self.configfile['outputs']['resume_ckpt']
-            train_dataset = Subset(dr_dataset, train_indices)
-            val_dataset = Subset(dr_dataset, val_indices)
-            val_class_counts = Counter(self.get_label(val_dataset[i]) for i in range(len(val_dataset)))
+            train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  num_workers=int(self.configfile_head['num_workers']))
+            val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                                num_workers=int(self.configfile_head['num_workers']))
+            return self._fit(train_loader, valid_loader=val_loader, ckpt_path=ckpt_path)
 
         else:
             raise Exception
