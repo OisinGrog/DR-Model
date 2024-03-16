@@ -12,7 +12,7 @@ import configparser
 from pytorch_lightning.callbacks import Callback
 import json
 import csv
-
+import pandas as pd
 
 def modify_config(learning_rate):
     config = configparser.ConfigParser()
@@ -130,3 +130,12 @@ class SaveMetricsCallback(Callback):
                     writer.writeheader()
                 writer.writerow({'epoch': epoch, 'validation_accuracy': accuracy})
 
+def count_labels(file_path, column):
+    df = pd.read_csv(file_path)
+    counts = df[column].value_counts()
+    return counts
+if __name__ == '__main__':
+
+    data_dir = '/home/qub-hri/Documents/Datasets/a-brazilian-multilabel-ophthalmological-dataset-brset-1.0.0/labels.csv'
+    column = 'diabetic_retinopathy'
+    print(count_labels(data_dir, column))
